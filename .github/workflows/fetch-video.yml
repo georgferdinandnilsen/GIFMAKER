@@ -32,6 +32,8 @@ jobs:
           yt-dlp \
             --no-playlist \
             --max-filesize 300M \
+            --extractor-args "youtube:player_client=android_vr,tv_simply,web_safari,default" \
+            --retries 5 \
             -f "bv*[height<=720]+ba/b[height<=720]/b" \
             -S "ext:mp4:m4a" \
             --remux-video mp4 \
