@@ -80,6 +80,9 @@
   }
   #enginePanel summary { cursor: pointer; color: var(--text); }
   #enginePanel p { margin: 10px 0; }
+  #enginePanel .engine-label { display: block; margin: 12px 0 6px; color: var(--text); font-size: .8rem; }
+  #enginePanel .advanced { margin-top: 12px; }
+  #enginePanel .advanced summary { color: var(--muted); font-size: .8rem; }
   #patInput {
     flex: 1;
     min-width: 180px;
@@ -193,12 +196,22 @@
 
     <details id="enginePanel">
       <summary>⚙️ GitHub-motor (for eieren av siden)</summary>
-      <p>Når de offentlige proxy-tjenestene er blokkert, kan siden i stedet bruke en GitHub Action i ditt eget repo til å hente videoen (tar 1–2 min). Krever en fin-innstilt GitHub-nøkkel med <em>Actions: Read and write</em> for kun dette repoet. Nøkkelen lagres bare i denne nettleseren.</p>
+      <p>Når de offentlige proxy-tjenestene er blokkert, henter en GitHub Action i repoet videoen med yt-dlp (1–2 min). Med en Cloudflare Worker-proxy holdes GitHub-nøkkelen skjult, og verken du eller besøkende trenger å lime inn noe.</p>
+      <label class="engine-label">Cloudflare Worker-URL</label>
       <div class="row">
-        <input type="password" id="patInput" placeholder="github_pat_…" autocomplete="off">
-        <button class="secondary" id="savePatBtn" type="button">Lagre nøkkel</button>
-        <button class="secondary" id="forgetPatBtn" type="button" hidden>Glem nøkkel</button>
+        <input type="url" id="workerInput" placeholder="https://gifmaker-proxy.dittnavn.workers.dev" autocomplete="off" spellcheck="false">
+        <button class="secondary" id="saveWorkerBtn" type="button">Lagre</button>
+        <button class="secondary" id="forgetWorkerBtn" type="button" hidden>Fjern</button>
       </div>
+      <details class="advanced">
+        <summary>Avansert: lim token rett inn i nettleseren i stedet</summary>
+        <p>Uten Worker kan du lime GitHub-nøkkelen inn her. Da lagres den kun i din nettleser og gjelder bare denne enheten.</p>
+        <div class="row">
+          <input type="password" id="patInput" placeholder="github_pat_…" autocomplete="off">
+          <button class="secondary" id="savePatBtn" type="button">Lagre nøkkel</button>
+          <button class="secondary" id="forgetPatBtn" type="button" hidden>Glem nøkkel</button>
+        </div>
+      </details>
       <p id="engineStatus" class="hint"></p>
     </details>
   </section>
@@ -310,6 +323,12 @@
   const GH_DEFAULTS = { owner: 'georgferdinandnilsen', repo: 'GIFMAKER' };
   const GH_WORKFLOW = 'fetch-video.yml';
 
+  // ▼▼▼ LIM INN CLOUDFLARE WORKER-URL-EN DIN HER (mellom fnuttene) ▼▼▼
+  // Da trenger verken du eller besøkende å lime inn noen nøkkel – proxyen
+  // holder GitHub-nøkkelen skjult. La stå tom hvis du ikke bruker Worker.
+  const WORKER_URL_HARDCODED = '';
+  // ▲▲▲ f.eks. 'https://gifmaker-proxy.dittnavn.workers.dev' ▲▲▲
+
   function ghTarget() {
     const m = location.hostname.match(/^([\w-]+)\.github\.io$/);
     const seg = location.pathname.split('/').filter(Boolean)[0];
@@ -317,24 +336,45 @@
     return GH_DEFAULTS;
   }
 
+  function getWorkerUrl() {
+    return (WORKER_URL_HARDCODED || localStorage.getItem('gifmaker_worker_url') || '').replace(/\/+$/, '');
+  }
+  function getPat() { return localStorage.getItem('gifmaker_gh_pat') || ''; }
+  function engineAvailable() { return !!getWorkerUrl() || !!getPat(); }
+
+  const workerInput = document.getElementById('workerInput');
+  const saveWorkerBtn = document.getElementById('saveWorkerBtn');
+  const forgetWorkerBtn = document.getElementById('forgetWorkerBtn');
   const patInput = document.getElementById('patInput');
   const savePatBtn = document.getElementById('savePatBtn');
   const forgetPatBtn = document.getElementById('forgetPatBtn');
   const engineStatus = document.getElementById('engineStatus');
 
-  function getPat() { return localStorage.getItem('gifmaker_gh_pat') || ''; }
-
   function refreshEngineUi() {
-    const has = !!getPat();
-    forgetPatBtn.hidden = !has;
-    engineStatus.textContent = has
-      ? `GitHub-motoren er aktiv for ${ghTarget().owner}/${ghTarget().repo} – brukes automatisk når proxyene feiler.`
-      : '';
-    engineStatus.className = has ? 'hint aktiv' : 'hint';
+    const worker = getWorkerUrl();
+    const pat = getPat();
+    forgetWorkerBtn.hidden = !localStorage.getItem('gifmaker_worker_url');
+    forgetPatBtn.hidden = !pat;
+    let msg = '';
+    if (worker) msg = `✅ GitHub-motoren er aktiv via Worker (${worker.replace(/^https?:\/\//, '')}) – ingen nøkkel nødvendig.`;
+    else if (pat) msg = `✅ GitHub-motoren er aktiv med token i denne nettleseren for ${ghTarget().owner}/${ghTarget().repo}.`;
+    engineStatus.textContent = msg;
+    engineStatus.className = msg ? 'hint aktiv' : 'hint';
   }
+  saveWorkerBtn.addEventListener('click', () => {
+    const v = workerInput.value.trim();
+    if (!/^https:\/\/.+/.test(v)) { engineStatus.textContent = 'Lim inn en gyldig https-URL til Worker-en.'; engineStatus.className = 'hint'; return; }
+    localStorage.setItem('gifmaker_worker_url', v.replace(/\/+$/, ''));
+    workerInput.value = '';
+    refreshEngineUi();
+  });
+  forgetWorkerBtn.addEventListener('click', () => {
+    localStorage.removeItem('gifmaker_worker_url');
+    refreshEngineUi();
+  });
   savePatBtn.addEventListener('click', () => {
     const v = patInput.value.trim();
-    if (!v) { engineStatus.textContent = 'Lim inn nøkkelen først.'; return; }
+    if (!v) { engineStatus.textContent = 'Lim inn nøkkelen først.'; engineStatus.className = 'hint'; return; }
     localStorage.setItem('gifmaker_gh_pat', v);
     patInput.value = '';
     refreshEngineUi();
@@ -346,18 +386,32 @@
   refreshEngineUi();
 
   async function gh(path, opts = {}) {
-    const res = await fetch(`https://api.github.com${path}`, {
-      ...opts,
-      headers: {
-        'Authorization': 'Bearer ' + getPat(),
-        'Accept': 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        ...(opts.headers || {}),
-      },
-    });
+    const worker = getWorkerUrl();
+    let res;
+    if (worker) {
+      // Via Worker-proxy: den legger på nøkkel og GitHub-headere selv.
+      const init = { method: opts.method || 'GET' };
+      if (opts.body) { init.body = opts.body; init.headers = { 'Content-Type': 'application/json' }; }
+      res = await fetch(worker + path, init);
+    } else {
+      res = await fetch('https://api.github.com' + path, {
+        ...opts,
+        headers: {
+          'Authorization': 'Bearer ' + getPat(),
+          'Accept': 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          ...(opts.headers || {}),
+        },
+      });
+    }
     if (!res.ok && res.status !== 204) {
-      if (res.status === 401) throw new Error('GitHub-nøkkelen ble avvist (401) – lag en ny under Settings → Developer settings → Fine-grained tokens');
-      if (res.status === 404) throw new Error('fant ikke workflowen (404) – sjekk at .github/workflows/fetch-video.yml finnes i repoet og at nøkkelen har Actions-tilgang');
+      if (res.status === 401) throw new Error(worker
+        ? 'Worker-ens GitHub-nøkkel ble avvist (401) – sjekk GH_TOKEN-hemmeligheten i Cloudflare'
+        : 'GitHub-nøkkelen ble avvist (401) – lag en ny under Settings → Developer settings → Fine-grained tokens');
+      if (res.status === 403) throw new Error(worker
+        ? 'Worker-en avviste forespørselen (403) – sjekk ALLOWED_ORIGIN i Cloudflare'
+        : 'Tilgang avvist (403) – sjekk at nøkkelen har Actions-tilgang til repoet');
+      if (res.status === 404) throw new Error('Fant ikke workflowen (404) – sjekk at .github/workflows/fetch-video.yml finnes i repoet');
       throw new Error('GitHub-API: HTTP ' + res.status);
     }
     return res;
@@ -537,7 +591,7 @@
         try {
           file = await fetchFromYouTube(ytId);
         } catch (proxyErr) {
-          if (!getPat()) throw proxyErr;
+          if (!engineAvailable()) throw proxyErr;
           console.warn('Proxyene feilet, bruker GitHub-motoren:', proxyErr);
           file = await fetchViaActions(raw);
         }
@@ -562,7 +616,7 @@
         a.textContent = 'cobalt.tools';
         a.style.color = 'inherit';
         urlStatus.append(a, ' og slipp filen øverst på siden.');
-        if (!getPat()) {
+        if (!engineAvailable()) {
           urlStatus.append(' (Er du eieren? Sett opp GitHub-motoren nedenfor for pålitelig henting.)');
         }
       } else {
