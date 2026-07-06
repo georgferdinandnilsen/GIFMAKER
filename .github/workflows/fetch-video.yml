@@ -1,0 +1,48 @@
+name: Hent video
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "Video-URL (YouTube m.m.)"
+        required: true
+        type: string
+
+run-name: "Hent video"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hent-video
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Installer yt-dlp
+        run: python3 -m pip install --quiet --upgrade yt-dlp
+
+      - name: Last ned video
+        env:
+          VIDEO_URL: ${{ inputs.video_url }}
+        run: |
+          yt-dlp \
+            --no-playlist \
+            --max-filesize 300M \
+            -f "bv*[height<=720]+ba/b[height<=720]/b" \
+            -S "ext:mp4:m4a" \
+            --remux-video mp4 \
+            -o "video.%(ext)s" \
+            "$VIDEO_URL"
+          ls -la video.*
+
+      - name: Last opp som artefakt
+        uses: actions/upload-artifact@v4
+        with:
+          name: video
+          path: video.mp4
+          compression-level: 0
+          retention-days: 1
