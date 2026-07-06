@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GIF-maker – video til loopende GIF</title>
+<style>
+  :root {
+    --bg: #12141a;
+    --panel: #1c1f28;
+    --panel2: #232734;
+    --text: #e8eaf0;
+    --muted: #9aa0b0;
+    --accent: #4f8cff;
+    --accent2: #7c5cff;
+    --ok: #3ecf8e;
+    --err: #ff5c72;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 1.9rem; margin: 0 0 4px; }
+  h1 span { background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+
+  #dropzone {
+    border: 2px dashed #3a4054;
+    border-radius: var(--radius);
+    background: var(--panel);
+    padding: 40px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #dropzone.dragover { border-color: var(--accent); background: var(--panel2); }
+  #dropzone p { margin: 6px 0; }
+  #dropzone .hint { color: var(--muted); font-size: .85rem; }
+  .linklike { background: none; border: none; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; padding: 0; }
+
+  details.ytinfo {
+    margin: 16px 0 0;
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    color: var(--muted);
+    font-size: .9rem;
+  }
+  details.ytinfo summary { color: var(--text); cursor: pointer; }
+  details.ytinfo code { background: var(--panel2); padding: 1px 6px; border-radius: 6px; }
+
+  #urlCard h2 { margin: 0 0 12px; font-size: 1.1rem; }
+  #urlInput {
+    flex: 1;
+    min-width: 220px;
+    background: var(--panel2);
+    border: 1px solid #343a4e;
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-size: .95rem;
+  }
+  #urlInput:focus { outline: none; border-color: var(--accent); }
+  #urlStatus { color: var(--muted); font-size: .9rem; min-height: 1.2em; margin: 10px 0 0; }
+  #urlStatus.error { color: var(--err); }
+  #urlStatus.ok { color: var(--ok); }
+  #urlCard .hint { color: var(--muted); font-size: .8rem; margin: 10px 0 0; }
+
+  section.card {
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-top: 20px;
+  }
+  video { width: 100%; border-radius: 10px; background: #000; max-height: 400px; }
+
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .controls label { display: flex; flex-direction: column; gap: 6px; font-size: .85rem; color: var(--muted); }
+  .controls input[type="number"] {
+    background: var(--panel2);
+    border: 1px solid #343a4e;
+    border-radius: 8px;
+    color: var(--text);
+    padding: 9px 10px;
+    font-size: 1rem;
+    width: 100%;
+  }
+  .controls input:focus { outline: none; border-color: var(--accent); }
+
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  button.secondary {
+    background: var(--panel2);
+    border: 1px solid #343a4e;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 9px 14px;
+    font-size: .9rem;
+    cursor: pointer;
+  }
+  button.secondary:hover { border-color: var(--accent); }
+  .chk { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .9rem; cursor: pointer; }
+
+  .primary {
+    display: inline-block;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border: none;
+    color: #fff;
+    font-size: 1.05rem;
+    font-weight: 600;
+    padding: 12px 28px;
+    border-radius: 10px;
+    cursor: pointer;
+    text-decoration: none;
+    margin-top: 8px;
+  }
+  .primary:disabled { opacity: .5; cursor: not-allowed; }
+
+  #segmentInfo { color: var(--muted); font-size: .85rem; margin: 4px 0 0; }
+
+  #progressWrap {
+    height: 10px;
+    background: var(--panel2);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-top: 16px;
+  }
+  #progressBar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    transition: width .3s;
+  }
+  #status { color: var(--muted); font-size: .9rem; min-height: 1.2em; margin: 10px 0 0; }
+  #status.error { color: var(--err); }
+  #status.ok { color: var(--ok); }
+
+  #result img { max-width: 100%; border-radius: 10px; background: #000; }
+  #gifMeta { color: var(--muted); font-size: .9rem; }
+
+  footer { margin-top: 40px; color: var(--muted); font-size: .8rem; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+  <h1><span>GIF-maker</span> 🎞️</h1>
+  <p class="sub">Gjør et videoklipp om til en loopende GIF. Alt skjer lokalt i nettleseren din – ingenting lastes opp til noen server.</p>
+
+  <section id="dropzone">
+    <input type="file" id="fileInput" accept="video/*" hidden>
+    <p><strong>Dra og slipp en videofil hit</strong>, eller <button class="linklike" type="button">velg en fil</button></p>
+    <p class="hint">MP4, WebM, MOV og de fleste andre videoformater</p>
+  </section>
+
+  <section class="card" id="urlCard">
+    <h2>…eller hent fra en video-URL 🔗</h2>
+    <div class="row">
+      <input type="url" id="urlInput" placeholder="https://www.youtube.com/watch?v=… eller direkte .mp4-lenke" spellcheck="false">
+      <button class="secondary" id="fetchUrlBtn" type="button">Hent video</button>
+    </div>
+    <p id="urlStatus"></p>
+    <p class="hint">YouTube-videoer hentes via offentlige Piped-instanser (360p/720p). Direkte videolenker fungerer hvis serveren tillater det (CORS).</p>
+  </section>
+
+  <details class="ytinfo">
+    <summary>Hvis YouTube-henting feiler</summary>
+    <p>Siden kjører uten egen server (GitHub Pages er kun statiske filer), så YouTube-videoer hentes via offentlige proxy-tjenester som av og til er nede eller blokkert. Reserveløsning: last ned videoen med <code>yt-dlp</code> på din egen maskin og last opp filen øverst.</p>
+  </details>
+
+  <section class="card" id="editor" hidden>
+    <video id="video" controls playsinline></video>
+
+    <div class="controls">
+      <label>Start (sekund)
+        <input type="number" id="startInput" min="0" step="0.1" value="0">
+      </label>
+      <label>Varighet (sekunder)
+        <input type="number" id="durInput" min="0.2" step="0.1" value="3">
+      </label>
+      <label>Bilder per sekund (FPS)
+        <input type="number" id="fpsInput" min="5" max="30" step="1" value="12">
+      </label>
+      <label>Bredde (piksler)
+        <input type="number" id="widthInput" min="120" max="1280" step="20" value="480">
+      </label>
+    </div>
+
+    <div class="row">
+      <button class="secondary" id="useCurrentBtn" type="button">⏱ Sett start til videoens posisjon</button>
+      <label class="chk"><input type="checkbox" id="previewLoop"> Forhåndsvis loopen i videoen</label>
+    </div>
+    <p id="segmentInfo"></p>
+
+    <button class="primary" id="makeGifBtn" type="button">Lag GIF</button>
+    <div id="progressWrap" hidden><div id="progressBar"></div></div>
+    <p id="status"></p>
+  </section>
+
+  <section class="card" id="result" hidden>
+    <h2>Ferdig GIF ✅</h2>
+    <img id="gifPreview" alt="Generert GIF (looper automatisk)">
+    <p id="gifMeta"></p>
+    <a class="primary" id="downloadLink" download="klipp.gif">⬇️ Last ned GIF</a>
+  </section>
+
+  <footer>Konverteringen gjøres av <a href="https://github.com/ffmpegwasm/ffmpeg.wasm" style="color:var(--muted)">ffmpeg.wasm</a> direkte i nettleseren.</footer>
+</main>
+
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+<script>
+(() => {
+  const { createFFmpeg, fetchFile } = FFmpeg;
+
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const editor = document.getElementById('editor');
+  const video = document.getElementById('video');
+  const startInput = document.getElementById('startInput');
+  const durInput = document.getElementById('durInput');
+  const fpsInput = document.getElementById('fpsInput');
+  const widthInput = document.getElementById('widthInput');
+  const useCurrentBtn = document.getElementById('useCurrentBtn');
+  const previewLoop = document.getElementById('previewLoop');
+  const segmentInfo = document.getElementById('segmentInfo');
+  const makeGifBtn = document.getElementById('makeGifBtn');
+  const progressWrap = document.getElementById('progressWrap');
+  const progressBar = document.getElementById('progressBar');
+  const status = document.getElementById('status');
+  const result = document.getElementById('result');
+  const gifPreview = document.getElementById('gifPreview');
+  const gifMeta = document.getElementById('gifMeta');
+  const downloadLink = document.getElementById('downloadLink');
+
+  const urlInput = document.getElementById('urlInput');
+  const fetchUrlBtn = document.getElementById('fetchUrlBtn');
+  const urlStatus = document.getElementById('urlStatus');
+
+  let currentFile = null;
+  let gifUrl = null;
+
+  // --- Filvalg ---
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) loadFile(fileInput.files[0]);
+  });
+
+  function loadFile(file) {
+    if (!file.type.startsWith('video/') && !/\.(mp4|webm|mov|mkv|avi|m4v)$/i.test(file.name)) {
+      setStatus('Filen ser ikke ut som en video.', 'error');
+      return;
+    }
+    currentFile = file;
+    video.src = URL.createObjectURL(file);
+    editor.hidden = false;
+    result.hidden = true;
+    setStatus('');
+    editor.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  // --- Henting fra URL (YouTube via Piped, eller direkte videolenke) ---
+  const PIPED_FALLBACK = ['https://api.piped.private.coffee'];
+
+  function setUrlStatus(msg, cls) {
+    urlStatus.textContent = msg;
+    urlStatus.className = cls || '';
+  }
+
+  function parseYouTubeId(raw) {
+    try {
+      const u = new URL(raw);
+      const host = u.hostname.replace(/^www\.|^m\./, '');
+      if (host === 'youtu.be') {
+        const id = u.pathname.slice(1).split('/')[0];
+        return /^[\w-]{6,15}$/.test(id) ? id : null;
+      }
+      if (/(^|\.)youtube(-nocookie)?\.com$/.test(host)) {
+        const v = u.searchParams.get('v');
+        if (v && /^[\w-]{6,15}$/.test(v)) return v;
+        const m = u.pathname.match(/\/(shorts|embed|live|v)\/([\w-]{6,15})/);
+        if (m) return m[2];
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  async function getPipedInstances() {
+    try {
+      const res = await fetch('https://piped-instances.kavin.rocks/', { signal: AbortSignal.timeout(8000) });
+      const list = await res.json();
+      const urls = list.map(i => i.api_url).filter(Boolean);
+      return [...new Set([...urls, ...PIPED_FALLBACK])];
+    } catch (e) {
+      return PIPED_FALLBACK;
+    }
+  }
+
+  async function downloadWithProgress(url, label) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const total = parseInt(res.headers.get('Content-Length')) || 0;
+    const reader = res.body.getReader();
+    const chunks = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      const mb = (received / 1048576).toFixed(1);
+      setUrlStatus(total
+        ? `${label} … ${mb} av ${(total / 1048576).toFixed(1)} MB (${Math.round(received / total * 100)} %)`
+        : `${label} … ${mb} MB`);
+    }
+    return new Blob(chunks, { type: res.headers.get('Content-Type') || 'video/mp4' });
+  }
+
+  async function fetchFromYouTube(videoId) {
+    setUrlStatus('Finner tilgjengelige videokilder …');
+    const instances = await getPipedInstances();
+    let lastErr = 'ingen instanser tilgjengelig';
+    for (const api of instances) {
+      try {
+        setUrlStatus(`Spør ${new URL(api).hostname} …`);
+        const res = await fetch(`${api}/streams/${videoId}`, { signal: AbortSignal.timeout(15000) });
+        if (!res.ok) { lastErr = 'HTTP ' + res.status; continue; }
+        const data = await res.json();
+        if (data.error) { lastErr = data.error; continue; }
+        const streams = (data.videoStreams || [])
+          .filter(s => !s.videoOnly && s.format === 'MPEG_4' && /^\d+p/.test(s.quality || ''))
+          .sort((a, b) => parseInt(b.quality) - parseInt(a.quality));
+        if (!streams.length) { lastErr = 'fant ingen nedlastbar videostrøm'; continue; }
+
+        if (data.duration > 900) {
+          setUrlStatus('Obs: lang video (' + Math.round(data.duration / 60) + ' min) – nedlastingen kan ta tid.');
+        }
+        const blob = await downloadWithProgress(streams[0].url, `Laster ned «${data.title || videoId}» (${streams[0].quality})`);
+        if (blob.size < 10000) { lastErr = 'nedlastingen ble tom'; continue; }
+        const safeName = (data.title || 'youtube-video').replace(/[^\wæøåÆØÅ\s-]/g, '').trim().slice(0, 60) || 'youtube-video';
+        return new File([blob], safeName + '.mp4', { type: 'video/mp4' });
+      } catch (e) {
+        lastErr = e.message || String(e);
+      }
+    }
+    throw new Error(lastErr);
+  }
+
+  async function fetchDirectVideo(rawUrl) {
+    const blob = await downloadWithProgress(rawUrl, 'Laster ned video');
+    if (!blob.type.startsWith('video/') && blob.size < 10000) throw new Error('svaret var ikke en videofil');
+    const name = (new URL(rawUrl).pathname.split('/').pop() || 'video.mp4').split('?')[0];
+    return new File([blob], name, { type: blob.type || 'video/mp4' });
+  }
+
+  async function handleUrlFetch() {
+    const raw = urlInput.value.trim();
+    if (!raw) { setUrlStatus('Lim inn en video-URL først.', 'error'); return; }
+
+    fetchUrlBtn.disabled = true;
+    try {
+      const ytId = parseYouTubeId(raw);
+      const file = ytId ? await fetchFromYouTube(ytId) : await fetchDirectVideo(raw);
+      setUrlStatus(`Hentet «${file.name}» (${(file.size / 1048576).toFixed(1)} MB). Velg klipp nedenfor. 👇`, 'ok');
+      loadFile(file);
+    } catch (err) {
+      console.error(err);
+      const ytId = parseYouTubeId(raw);
+      setUrlStatus(ytId
+        ? 'Fikk ikke hentet videoen via de offentlige proxy-tjenestene akkurat nå (' + err.message + '). Prøv igjen senere, eller last ned videoen selv og last opp filen øverst.'
+        : 'Fikk ikke lastet ned videoen (' + err.message + '). Serveren tillater trolig ikke henting fra andre nettsider (CORS). Last ned filen selv og last den opp øverst.',
+        'error');
+    } finally {
+      fetchUrlBtn.disabled = false;
+    }
+  }
+
+  fetchUrlBtn.addEventListener('click', handleUrlFetch);
+  urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleUrlFetch(); });
+
+  video.addEventListener('loadedmetadata', () => {
+    startInput.max = Math.max(0, video.duration - 0.2).toFixed(1);
+    updateSegmentInfo();
+  });
+
+  // --- Kontroller ---
+  useCurrentBtn.addEventListener('click', () => {
+    startInput.value = video.currentTime.toFixed(1);
+    updateSegmentInfo();
+  });
+
+  [startInput, durInput].forEach(el => el.addEventListener('input', updateSegmentInfo));
+
+  function getSegment() {
+    const start = Math.max(0, parseFloat(startInput.value) || 0);
+    let dur = Math.max(0.2, parseFloat(durInput.value) || 3);
+    if (video.duration && start + dur > video.duration) {
+      dur = Math.max(0.2, video.duration - start);
+    }
+    return { start, dur };
+  }
+
+  function fmt(t) {
+    const m = Math.floor(t / 60);
+    const s = (t - m * 60).toFixed(1);
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  }
+
+  function updateSegmentInfo() {
+    const { start, dur } = getSegment();
+    segmentInfo.textContent = `Klippet: ${fmt(start)} → ${fmt(start + dur)} (${dur.toFixed(1)} sekunder). GIF-en looper uendelig.`;
+  }
+
+  // Forhåndsvis loopen: spol tilbake til start når vi passerer slutten
+  video.addEventListener('timeupdate', () => {
+    if (!previewLoop.checked) return;
+    const { start, dur } = getSegment();
+    if (video.currentTime >= start + dur || video.currentTime < start - 0.5) {
+      video.currentTime = start;
+      video.play();
+    }
+  });
+  previewLoop.addEventListener('change', () => {
+    if (previewLoop.checked) {
+      const { start } = getSegment();
+      video.currentTime = start;
+      video.play();
+    }
+  });
+
+  // --- Konvertering ---
+  function setStatus(msg, cls) {
+    status.textContent = msg;
+    status.className = cls || '';
+  }
+  function setProgress(ratio) {
+    progressBar.style.width = `${Math.round(Math.min(1, Math.max(0, ratio)) * 100)}%`;
+  }
+
+  makeGifBtn.addEventListener('click', async () => {
+    if (!currentFile) return;
+    const { start, dur } = getSegment();
+    const fps = Math.min(30, Math.max(5, parseInt(fpsInput.value) || 12));
+    const width = Math.min(1280, Math.max(120, parseInt(widthInput.value) || 480));
+
+    makeGifBtn.disabled = true;
+    result.hidden = true;
+    progressWrap.hidden = false;
+    setProgress(0);
+    video.pause();
+
+    // Én fersk instans per konvertering – enkelttråds-kjernen (core-st) trenger
+    // ikke SharedArrayBuffer og fungerer derfor på GitHub Pages.
+    const ffmpeg = createFFmpeg({
+      log: false,
+      mainName: 'main',
+      corePath: 'https://unpkg.com/@ffmpeg/core-st@0.11.1/dist/ffmpeg-core.js',
+    });
+    ffmpeg.setProgress(({ ratio }) => {
+      if (ratio >= 0 && ratio <= 1) setProgress(ratio);
+    });
+
+    const ext = (currentFile.name.match(/\.\w+$/) || ['.mp4'])[0];
+    const inName = 'input' + ext;
+
+    try {
+      setStatus('Laster inn konverteringsmotoren (ffmpeg) … første gang tar dette litt tid.');
+      await ffmpeg.load();
+
+      setStatus('Leser videofilen …');
+      ffmpeg.FS('writeFile', inName, await fetchFile(currentFile));
+
+      setStatus(`Lager GIF (${dur.toFixed(1)} s fra ${fmt(start)}, ${fps} fps, ${width} px bred) …`);
+      await ffmpeg.run(
+        '-ss', String(start),
+        '-t', String(dur),
+        '-i', inName,
+        '-filter_complex',
+        `[0:v]fps=${fps},scale=${width}:-1:flags=lanczos,split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle`,
+        '-loop', '0',
+        'out.gif'
+      );
+
+      const data = ffmpeg.FS('readFile', 'out.gif');
+      if (!data || data.length === 0) throw new Error('Resultatet ble tomt.');
+
+      if (gifUrl) URL.revokeObjectURL(gifUrl);
+      gifUrl = URL.createObjectURL(new Blob([data.buffer], { type: 'image/gif' }));
+
+      gifPreview.src = gifUrl;
+      downloadLink.href = gifUrl;
+      const base = currentFile.name.replace(/\.\w+$/, '') || 'klipp';
+      downloadLink.download = `${base}_${start.toFixed(0)}s.gif`;
+      const mb = data.length / (1024 * 1024);
+      gifMeta.textContent = `${dur.toFixed(1)} sekunder · ${fps} fps · ${width} px bred · ${mb >= 1 ? mb.toFixed(1) + ' MB' : Math.round(data.length / 1024) + ' kB'}`;
+
+      result.hidden = false;
+      setProgress(1);
+      setStatus('Ferdig! GIF-en looper automatisk.', 'ok');
+      result.scrollIntoView({ behavior: 'smooth' });
+    } catch (err) {
+      console.error(err);
+      setStatus('Noe gikk galt under konverteringen: ' + (err.message || err), 'error');
+    } finally {
+      try { ffmpeg.FS('unlink', inName); } catch (e) {}
+      try { ffmpeg.FS('unlink', 'out.gif'); } catch (e) {}
+      try { ffmpeg.exit(); } catch (e) {}
+      makeGifBtn.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
