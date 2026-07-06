@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GIF-maker – video til loopende GIF</title>
+<link rel="icon" type="image/png" href="gif.png">
+<link rel="apple-touch-icon" href="gif.png">
 <style>
   :root {
     --bg: #12141a;
@@ -323,9 +325,8 @@
   const GH_DEFAULTS = { owner: 'georgferdinandnilsen', repo: 'GIFMAKER' };
   const GH_WORKFLOW = 'fetch-video.yml';
 
-  // Proxy-adresse. La stå tom – da limer du Worker-URL-en inn i «⚙️ GitHub-
-  // motor»-panelet på siden i stedet (lagres i din nettleser).
-  const WORKER_URL_HARDCODED = '';
+  // Proxy-adresse (Cloudflare Worker som skjuler GitHub-nøkkelen). Ikke hemmelig.
+  const WORKER_URL_HARDCODED = 'https://gifmaker-proxy.georgferdinandnilsen.workers.dev';
 
   function ghTarget() {
     const m = location.hostname.match(/^([\w-]+)\.github\.io$/);
