@@ -323,10 +323,9 @@
   const GH_DEFAULTS = { owner: 'georgferdinandnilsen', repo: 'GIFMAKER' };
   const GH_WORKFLOW = 'fetch-video.yml';
 
-  // Cloudflare Pages Function-proxy (functions/gh/[[path]].js) holder
-  // GitHub-nøkkelen skjult. Peker på /gh på Pages-siden din. Bytt hostnavnet
-  // hvis Pages-prosjektet ditt har en annen adresse.
-  const WORKER_URL_HARDCODED = 'https://gifmaker-29e.pages.dev/gh';
+  // Proxy-adresse. La stå tom – da limer du Worker-URL-en inn i «⚙️ GitHub-
+  // motor»-panelet på siden i stedet (lagres i din nettleser).
+  const WORKER_URL_HARDCODED = '';
 
   function ghTarget() {
     const m = location.hostname.match(/^([\w-]+)\.github\.io$/);
