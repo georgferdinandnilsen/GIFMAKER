@@ -73,29 +73,6 @@
   #urlStatus.error { color: var(--err); }
   #urlStatus.ok { color: var(--ok); }
   #urlCard .hint { color: var(--muted); font-size: .8rem; margin: 10px 0 0; }
-  #enginePanel {
-    margin-top: 14px;
-    border-top: 1px solid #2b3040;
-    padding-top: 12px;
-    color: var(--muted);
-    font-size: .85rem;
-  }
-  #enginePanel summary { cursor: pointer; color: var(--text); }
-  #enginePanel p { margin: 10px 0; }
-  #enginePanel .engine-label { display: block; margin: 12px 0 6px; color: var(--text); font-size: .8rem; }
-  #enginePanel .advanced { margin-top: 12px; }
-  #enginePanel .advanced summary { color: var(--muted); font-size: .8rem; }
-  #patInput {
-    flex: 1;
-    min-width: 180px;
-    background: var(--panel2);
-    border: 1px solid #343a4e;
-    border-radius: 8px;
-    color: var(--text);
-    padding: 9px 10px;
-    font-size: .9rem;
-  }
-  #engineStatus.aktiv { color: var(--ok); }
 
   section.card {
     background: var(--panel);
@@ -194,28 +171,7 @@
       <button class="secondary" id="fetchUrlBtn" type="button">Hent video</button>
     </div>
     <p id="urlStatus"></p>
-    <p class="hint">YouTube-videoer hentes via offentlige Piped-instanser (360p/720p). Direkte videolenker fungerer hvis serveren tillater det (CORS).</p>
-
-    <details id="enginePanel">
-      <summary>⚙️ GitHub-motor (for eieren av siden)</summary>
-      <p>Når de offentlige proxy-tjenestene er blokkert, henter en GitHub Action i repoet videoen med yt-dlp (1–2 min). Med en Cloudflare Worker-proxy holdes GitHub-nøkkelen skjult, og verken du eller besøkende trenger å lime inn noe.</p>
-      <label class="engine-label">Cloudflare Worker-URL</label>
-      <div class="row">
-        <input type="url" id="workerInput" placeholder="https://gifmaker-proxy.dittnavn.workers.dev" autocomplete="off" spellcheck="false">
-        <button class="secondary" id="saveWorkerBtn" type="button">Lagre</button>
-        <button class="secondary" id="forgetWorkerBtn" type="button" hidden>Fjern</button>
-      </div>
-      <details class="advanced">
-        <summary>Avansert: lim token rett inn i nettleseren i stedet</summary>
-        <p>Uten Worker kan du lime GitHub-nøkkelen inn her. Da lagres den kun i din nettleser og gjelder bare denne enheten.</p>
-        <div class="row">
-          <input type="password" id="patInput" placeholder="github_pat_…" autocomplete="off">
-          <button class="secondary" id="savePatBtn" type="button">Lagre nøkkel</button>
-          <button class="secondary" id="forgetPatBtn" type="button" hidden>Glem nøkkel</button>
-        </div>
-      </details>
-      <p id="engineStatus" class="hint"></p>
-    </details>
+    <p class="hint">YouTube-videoer hentes automatisk – først via offentlige proxy-tjenester, og hvis de er blokkert, via en innebygd GitHub-motor (tar da 1–2 min). Direkte videolenker fungerer hvis serveren tillater det (CORS).</p>
   </section>
 
   <details class="ytinfo">
@@ -340,49 +296,6 @@
   }
   function getPat() { return localStorage.getItem('gifmaker_gh_pat') || ''; }
   function engineAvailable() { return !!getWorkerUrl() || !!getPat(); }
-
-  const workerInput = document.getElementById('workerInput');
-  const saveWorkerBtn = document.getElementById('saveWorkerBtn');
-  const forgetWorkerBtn = document.getElementById('forgetWorkerBtn');
-  const patInput = document.getElementById('patInput');
-  const savePatBtn = document.getElementById('savePatBtn');
-  const forgetPatBtn = document.getElementById('forgetPatBtn');
-  const engineStatus = document.getElementById('engineStatus');
-
-  function refreshEngineUi() {
-    const worker = getWorkerUrl();
-    const pat = getPat();
-    forgetWorkerBtn.hidden = !localStorage.getItem('gifmaker_worker_url');
-    forgetPatBtn.hidden = !pat;
-    let msg = '';
-    if (worker) msg = `✅ GitHub-motoren er aktiv via Worker (${worker.replace(/^https?:\/\//, '')}) – ingen nøkkel nødvendig.`;
-    else if (pat) msg = `✅ GitHub-motoren er aktiv med token i denne nettleseren for ${ghTarget().owner}/${ghTarget().repo}.`;
-    engineStatus.textContent = msg;
-    engineStatus.className = msg ? 'hint aktiv' : 'hint';
-  }
-  saveWorkerBtn.addEventListener('click', () => {
-    const v = workerInput.value.trim();
-    if (!/^https:\/\/.+/.test(v)) { engineStatus.textContent = 'Lim inn en gyldig https-URL til Worker-en.'; engineStatus.className = 'hint'; return; }
-    localStorage.setItem('gifmaker_worker_url', v.replace(/\/+$/, ''));
-    workerInput.value = '';
-    refreshEngineUi();
-  });
-  forgetWorkerBtn.addEventListener('click', () => {
-    localStorage.removeItem('gifmaker_worker_url');
-    refreshEngineUi();
-  });
-  savePatBtn.addEventListener('click', () => {
-    const v = patInput.value.trim();
-    if (!v) { engineStatus.textContent = 'Lim inn nøkkelen først.'; engineStatus.className = 'hint'; return; }
-    localStorage.setItem('gifmaker_gh_pat', v);
-    patInput.value = '';
-    refreshEngineUi();
-  });
-  forgetPatBtn.addEventListener('click', () => {
-    localStorage.removeItem('gifmaker_gh_pat');
-    refreshEngineUi();
-  });
-  refreshEngineUi();
 
   async function gh(path, opts = {}) {
     const worker = getWorkerUrl();
