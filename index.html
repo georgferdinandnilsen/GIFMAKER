@@ -71,6 +71,26 @@
   #urlStatus.error { color: var(--err); }
   #urlStatus.ok { color: var(--ok); }
   #urlCard .hint { color: var(--muted); font-size: .8rem; margin: 10px 0 0; }
+  #enginePanel {
+    margin-top: 14px;
+    border-top: 1px solid #2b3040;
+    padding-top: 12px;
+    color: var(--muted);
+    font-size: .85rem;
+  }
+  #enginePanel summary { cursor: pointer; color: var(--text); }
+  #enginePanel p { margin: 10px 0; }
+  #patInput {
+    flex: 1;
+    min-width: 180px;
+    background: var(--panel2);
+    border: 1px solid #343a4e;
+    border-radius: 8px;
+    color: var(--text);
+    padding: 9px 10px;
+    font-size: .9rem;
+  }
+  #engineStatus.aktiv { color: var(--ok); }
 
   section.card {
     background: var(--panel);
@@ -170,6 +190,17 @@
     </div>
     <p id="urlStatus"></p>
     <p class="hint">YouTube-videoer hentes via offentlige Piped-instanser (360p/720p). Direkte videolenker fungerer hvis serveren tillater det (CORS).</p>
+
+    <details id="enginePanel">
+      <summary>⚙️ GitHub-motor (for eieren av siden)</summary>
+      <p>Når de offentlige proxy-tjenestene er blokkert, kan siden i stedet bruke en GitHub Action i ditt eget repo til å hente videoen (tar 1–2 min). Krever en fin-innstilt GitHub-nøkkel med <em>Actions: Read and write</em> for kun dette repoet. Nøkkelen lagres bare i denne nettleseren.</p>
+      <div class="row">
+        <input type="password" id="patInput" placeholder="github_pat_…" autocomplete="off">
+        <button class="secondary" id="savePatBtn" type="button">Lagre nøkkel</button>
+        <button class="secondary" id="forgetPatBtn" type="button" hidden>Glem nøkkel</button>
+      </div>
+      <p id="engineStatus" class="hint"></p>
+    </details>
   </section>
 
   <details class="ytinfo">
@@ -274,6 +305,132 @@
     editor.scrollIntoView({ behavior: 'smooth' });
   }
 
+  // --- GitHub-motor: hent video via GitHub Actions i eget repo ---
+  // Eier/repo utledes fra github.io-adressen; fallback for lokal testing.
+  const GH_DEFAULTS = { owner: 'georgferdinandnilsen', repo: 'GIFMAKER' };
+  const GH_WORKFLOW = 'fetch-video.yml';
+
+  function ghTarget() {
+    const m = location.hostname.match(/^([\w-]+)\.github\.io$/);
+    const seg = location.pathname.split('/').filter(Boolean)[0];
+    if (m && seg) return { owner: m[1], repo: seg };
+    return GH_DEFAULTS;
+  }
+
+  const patInput = document.getElementById('patInput');
+  const savePatBtn = document.getElementById('savePatBtn');
+  const forgetPatBtn = document.getElementById('forgetPatBtn');
+  const engineStatus = document.getElementById('engineStatus');
+
+  function getPat() { return localStorage.getItem('gifmaker_gh_pat') || ''; }
+
+  function refreshEngineUi() {
+    const has = !!getPat();
+    forgetPatBtn.hidden = !has;
+    engineStatus.textContent = has
+      ? `GitHub-motoren er aktiv for ${ghTarget().owner}/${ghTarget().repo} – brukes automatisk når proxyene feiler.`
+      : '';
+    engineStatus.className = has ? 'hint aktiv' : 'hint';
+  }
+  savePatBtn.addEventListener('click', () => {
+    const v = patInput.value.trim();
+    if (!v) { engineStatus.textContent = 'Lim inn nøkkelen først.'; return; }
+    localStorage.setItem('gifmaker_gh_pat', v);
+    patInput.value = '';
+    refreshEngineUi();
+  });
+  forgetPatBtn.addEventListener('click', () => {
+    localStorage.removeItem('gifmaker_gh_pat');
+    refreshEngineUi();
+  });
+  refreshEngineUi();
+
+  async function gh(path, opts = {}) {
+    const res = await fetch(`https://api.github.com${path}`, {
+      ...opts,
+      headers: {
+        'Authorization': 'Bearer ' + getPat(),
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        ...(opts.headers || {}),
+      },
+    });
+    if (!res.ok && res.status !== 204) {
+      if (res.status === 401) throw new Error('GitHub-nøkkelen ble avvist (401) – lag en ny under Settings → Developer settings → Fine-grained tokens');
+      if (res.status === 404) throw new Error('fant ikke workflowen (404) – sjekk at .github/workflows/fetch-video.yml finnes i repoet og at nøkkelen har Actions-tilgang');
+      throw new Error('GitHub-API: HTTP ' + res.status);
+    }
+    return res;
+  }
+
+  // Pakk ut én videofil fra en ukomprimert zip (artefakten lages med compression-level: 0)
+  function unzipVideo(buf) {
+    const u8 = new Uint8Array(buf);
+    const dv = new DataView(buf);
+    let e = u8.length - 22;
+    while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+    if (e < 0) throw new Error('ugyldig artefakt (ikke zip)');
+    let p = dv.getUint32(e + 16, true);
+    const count = dv.getUint16(e + 10, true);
+    for (let i = 0; i < count; i++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) throw new Error('zip-feil');
+      const method = dv.getUint16(p + 10, true);
+      const csize = dv.getUint32(p + 20, true);
+      const nameLen = dv.getUint16(p + 28, true);
+      const extraLen = dv.getUint16(p + 30, true);
+      const cmtLen = dv.getUint16(p + 32, true);
+      const lfhOff = dv.getUint32(p + 42, true);
+      const name = new TextDecoder().decode(u8.slice(p + 46, p + 46 + nameLen));
+      if (/\.(mp4|webm|mkv|mov)$/i.test(name)) {
+        if (method !== 0) throw new Error('artefakten er komprimert – sett compression-level: 0 i workflowen');
+        const lnl = dv.getUint16(lfhOff + 26, true);
+        const lel = dv.getUint16(lfhOff + 28, true);
+        const start = lfhOff + 30 + lnl + lel;
+        return { name, data: u8.slice(start, start + csize) };
+      }
+      p += 46 + nameLen + extraLen + cmtLen;
+    }
+    throw new Error('fant ingen videofil i artefakten');
+  }
+
+  async function fetchViaActions(rawUrl) {
+    const { owner, repo } = ghTarget();
+    const base = `/repos/${owner}/${repo}`;
+    const since = new Date(Date.now() - 10000).toISOString();
+
+    setUrlStatus('Starter GitHub-motoren … (tar vanligvis 1–2 min)');
+    await gh(`${base}/actions/workflows/${GH_WORKFLOW}/dispatches`, {
+      method: 'POST',
+      body: JSON.stringify({ ref: 'main', inputs: { video_url: rawUrl } }),
+    });
+
+    // Finn kjøringen som ble startet, og vent på at den blir ferdig
+    let run = null;
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      const q = `?event=workflow_dispatch&created=${encodeURIComponent('>=' + since)}&per_page=5`;
+      const res = await gh(`${base}/actions/workflows/${GH_WORKFLOW}/runs${q}`);
+      const data = await res.json();
+      run = (data.workflow_runs || [])[0] || null;
+      if (!run) { setUrlStatus('Venter på at GitHub starter kjøringen …'); continue; }
+      if (run.status === 'completed') break;
+      setUrlStatus(`GitHub-motoren jobber (${run.status === 'queued' ? 'i kø' : 'laster ned'}) … ${Math.round((i + 1) * 5 / 60 * 10) / 10} min`);
+    }
+    if (!run || run.status !== 'completed') throw new Error('GitHub-kjøringen ble ikke ferdig i tide – sjekk Actions-fanen i repoet');
+    if (run.conclusion !== 'success') throw new Error('GitHub-kjøringen feilet – åpne Actions-fanen i repoet for detaljer (videoen kan være for stor, sperret eller utilgjengelig)');
+
+    setUrlStatus('Henter videoen fra GitHub …');
+    const artRes = await gh(`${base}/actions/runs/${run.id}/artifacts`);
+    const arts = (await artRes.json()).artifacts || [];
+    const art = arts.find(a => a.name === 'video') || arts[0];
+    if (!art) throw new Error('fant ingen artefakt fra kjøringen');
+
+    const zipRes = await gh(`/repos/${owner}/${repo}/actions/artifacts/${art.id}/zip`);
+    const buf = await zipRes.arrayBuffer();
+    const { data } = unzipVideo(buf);
+    return new File([data], 'youtube-video.mp4', { type: 'video/mp4' });
+  }
+
   // --- Henting fra URL (YouTube via Piped, eller direkte videolenke) ---
   const PIPED_FALLBACK = ['https://api.piped.private.coffee'];
 
@@ -373,18 +530,44 @@
     if (!raw) { setUrlStatus('Lim inn en video-URL først.', 'error'); return; }
 
     fetchUrlBtn.disabled = true;
+    const ytId = parseYouTubeId(raw);
     try {
-      const ytId = parseYouTubeId(raw);
-      const file = ytId ? await fetchFromYouTube(ytId) : await fetchDirectVideo(raw);
+      let file;
+      if (ytId) {
+        try {
+          file = await fetchFromYouTube(ytId);
+        } catch (proxyErr) {
+          if (!getPat()) throw proxyErr;
+          console.warn('Proxyene feilet, bruker GitHub-motoren:', proxyErr);
+          file = await fetchViaActions(raw);
+        }
+      } else {
+        file = await fetchDirectVideo(raw);
+      }
       setUrlStatus(`Hentet «${file.name}» (${(file.size / 1048576).toFixed(1)} MB). Velg klipp nedenfor. 👇`, 'ok');
       loadFile(file);
     } catch (err) {
       console.error(err);
-      const ytId = parseYouTubeId(raw);
-      setUrlStatus(ytId
-        ? 'Fikk ikke hentet videoen via de offentlige proxy-tjenestene akkurat nå (' + err.message + '). Prøv igjen senere, eller last ned videoen selv og last opp filen øverst.'
-        : 'Fikk ikke lastet ned videoen (' + err.message + '). Serveren tillater trolig ikke henting fra andre nettsider (CORS). Last ned filen selv og last den opp øverst.',
-        'error');
+      urlStatus.className = 'error';
+      urlStatus.textContent = '';
+      if (ytId) {
+        urlStatus.append(
+          'Fikk ikke hentet videoen (' + err.message + '). ' +
+          'De offentlige proxy-tjenestene blokkeres ofte av YouTube – prøv igjen litt senere. Rask omvei: last ned videoen via '
+        );
+        const a = document.createElement('a');
+        a.href = 'https://cobalt.tools';
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = 'cobalt.tools';
+        a.style.color = 'inherit';
+        urlStatus.append(a, ' og slipp filen øverst på siden.');
+        if (!getPat()) {
+          urlStatus.append(' (Er du eieren? Sett opp GitHub-motoren nedenfor for pålitelig henting.)');
+        }
+      } else {
+        urlStatus.textContent = 'Fikk ikke lastet ned videoen (' + err.message + '). Serveren tillater trolig ikke henting fra andre nettsider (CORS). Last ned filen selv og last den opp øverst.';
+      }
     } finally {
       fetchUrlBtn.disabled = false;
     }
